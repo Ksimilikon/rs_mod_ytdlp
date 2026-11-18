@@ -8,7 +8,8 @@
 //!   thread runs yt-dlp for them one by one;
 //! - files go to `<music>/<subfolder>` (partial files to `<cache>`), then
 //!   to the library through `idx_add_tracks`;
-//! - search ([`search`], `browse`): a query lists YouTube videos with their
+//! - search ([`search`], `browse`): a query lists YouTube videos or
+//!   SoundCloud tracks with their
 //!   durations; picking one downloads its audio to the cache and plays it,
 //!   "Save to library" moves it to the music folder. A second thread runs
 //!   searches / previews, so they never wait for the download queue;
@@ -96,9 +97,9 @@ impl ModEntry for YtDlp {
         Meta {
             author: Some(c"dream_player"),
             description: Some(
-                c"Searches YouTube, previews and downloads audio with yt-dlp into the library",
+                c"Searches YouTube / SoundCloud, previews and downloads audio with yt-dlp into the library",
             ),
-            ..Meta::new(c"yt-dlp", c"0.2.0")
+            ..Meta::new(c"yt-dlp", c"0.3.0")
         }
     }
 
@@ -305,6 +306,11 @@ fn handle(
             ui.read_inputs(&mut s);
             save(shared, &s);
             browse::save_selected(shared, jobs, &s);
+        }
+        Act::SearchSource => {
+            s.search_source = search::Source::from_index(target).ok_or(ModStatus::InvalidArg)?;
+            ui.show_settings(&s);
+            save(shared, &s);
         }
         Act::SearchCount => {
             s.search_count = *usize::try_from(target)

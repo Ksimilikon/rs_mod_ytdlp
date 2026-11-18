@@ -509,10 +509,12 @@ fn search_listen_save() {
         &fake,
         format!(
             "#!/bin/bash\n\
-             for a in \"$@\"; do [ \"$a\" = --flat-playlist ] && {{ \
-             printf 'aaaaaaaaaaa\\037185\\037First song\\037Chan\\nnot a result\\nbbbbbbbbbbb\\037NA\\037Live thing\\037NA\\n'; exit 0; }}; done\n\
              last=\"${{!#}}\"\n\
-             exec yt-dlp \"${{@:1:$#-1}}\" \"http://127.0.0.1:{port}/song-${{last##*v=}}.m4a\"\n"
+             for a in \"$@\"; do [ \"$a\" = --flat-playlist ] && {{ case \"$last\" in \
+             scsearch*) printf '1250206453\\037355.776\\037Cloud track\\037Some DJ\\037https://soundcloud.com/some-dj/cloud-track\\n2\\0371\\037no link\\037x\\037NA\\n';; \
+             *) printf 'aaaaaaaaaaa\\037185\\037First song\\037Chan\\nnot a result\\nbbbbbbbbbbb\\037NA\\037Live thing\\037NA\\n';; \
+             esac; exit 0; }}; done\n\
+             exec yt-dlp \"${{@:1:$#-1}}\" \"http://127.0.0.1:{port}/song-${{last##*[=/]}}.m4a\"\n"
         ),
     )
     .unwrap();
@@ -592,6 +594,63 @@ fn search_listen_save() {
     assert_eq!(status(), "Stopped.");
     assert_eq!(results().1[1], "✓ [--:--] Live thing");
     assert!(files_in(&preview).is_empty());
+
+    // the same on SoundCloud: numeric ids, the page link from the listing.
+    let source = find("Search on", |e| matches!(e, Element::Select { .. }));
+    activate(source, 1);
+    assert!(matches!(*source, Element::Select { selected: 1, .. }));
+    press("Search");
+    let s = wait_status(&["Found", "Search failed", "Nothing"], 30);
+    assert_eq!(s, "Found 1: pick one to listen to it.");
+    let (list, lines) = results();
+    assert_eq!(lines, ["· [5:56] Cloud track — Some DJ"]);
+    activate(list, 0);
+    let s = wait_status(&["Playing", "Can't"], 60);
+    assert!(s.starts_with("Playing: Cloud track [5:56]"), "{s}");
+    press("Save to library");
+    assert_eq!(status(), "Saved: Cloud track, added to the library");
+    assert_eq!(library_len(), before + 3);
+    assert!(
+        files_in(&music).iter().any(|f| f.contains("cloud-track")),
+        "{:?}",
+        files_in(&music)
+    );
+    press("Stop listening");
+    activate(source, 0);
+}
+
+#[test]
+#[ignore = "searches SoundCloud: needs yt-dlp and the network"]
+fn real_soundcloud_search_and_preview() {
+    let Some(core) = core() else { return };
+    let _started = Started::new();
+    let source = find("Search on", |e| matches!(e, Element::Select { .. }));
+    activate(source, 1);
+    type_into("search query", "lofi beats");
+    press("Search");
+    let s = wait_status(&["Found", "Search failed", "Nothing"], 60);
+    assert!(s.starts_with("Found"), "{s}");
+    let (list, lines) = results();
+    eprintln!("{lines:#?}");
+    // a short track: the preview is downloaded whole.
+    let i = lines
+        .iter()
+        .position(|l| {
+            let d = l.split(['[', ']']).nth(1).unwrap_or("");
+            d.len() == 4 && d < "4:00"
+        })
+        .unwrap_or(0);
+    activate(list, i as u64);
+    let s = wait_status(&["Playing", "Can't"], 180);
+    activate(source, 0);
+    assert!(s.starts_with("Playing"), "{s}");
+    let preview = files_in(&core.dir.path().join("cache/rs_mod_ytdlp/preview"));
+    eprintln!("preview: {preview:?}");
+    assert!(
+        preview.len() == 1 && (preview[0].ends_with(".m4a") || preview[0].ends_with(".mp3")),
+        "audio only: {preview:?}"
+    );
+    press("Stop listening");
 }
 
 #[test]

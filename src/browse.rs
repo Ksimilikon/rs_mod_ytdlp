@@ -1,4 +1,5 @@
-//! Search and preview: a query lists YouTube videos (with durations);
+//! Search and preview: a query lists YouTube videos or SoundCloud tracks
+//! (with durations);
 //! picking one downloads its audio into `<cache>/rs_mod_ytdlp/preview` and
 //! plays it through the player; "Save to library" moves that file to the
 //! music folder and adds it to the library.
@@ -119,7 +120,7 @@ fn queue_download(shared: &Shared, jobs: &Sender<Job>, hit: &Hit, settings: &Set
     shared.queued.fetch_add(1, Ordering::AcqRel);
     let job = Job {
         generation,
-        url: hit.url(),
+        url: hit.url.clone(),
         settings: settings.clone(),
         hit: Some(hit.id.clone()),
     };
@@ -166,7 +167,9 @@ pub fn search(shared: &Shared, tasks: &Sender<TaskMsg>, jobs: &Sender<Job>, s: &
     };
     show(shared, &r);
     let generation = shared.browse_gen.load(Ordering::Acquire);
-    shared.ui.set_status(&format!("Searching: {query}"));
+    shared
+        .ui
+        .set_status(&format!("Searching {}: {query}", s.search_source.label()));
     let _ = tasks.send(TaskMsg {
         generation,
         task: Task::Search {
@@ -357,6 +360,7 @@ fn run_search(shared: &Shared, generation: u64, query: &str, s: &Settings) {
     let extra: Vec<String> = s.extra_args.split_whitespace().map(str::to_owned).collect();
     let found = search::search(
         &ytdlp,
+        s.search_source,
         query,
         s.search_count,
         &extra,
@@ -400,7 +404,7 @@ fn run_fetch(shared: &Shared, generation: u64, hit: &Hit, s: &Settings) {
             }
         }
         let (opts, _note) = crate::dl_options(s, dir, None)?;
-        ytdlp::download(&opts, &hit.url(), &shared.browse_running, |ev| {
+        ytdlp::download(&opts, &hit.url, &shared.browse_running, |ev| {
             if let Event::Progress(p) = ev {
                 ui.set_status(&format!("Loading for listening {p}: {}", hit.title));
             }

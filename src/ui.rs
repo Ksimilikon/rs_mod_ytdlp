@@ -49,10 +49,11 @@ pub enum Act {
     StopListening,
     SaveResult,
     SearchCount,
+    SearchSource,
 }
 
 impl Act {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 19] = [
         Self::Download,
         Self::Cancel,
         Self::StripPlaylist,
@@ -71,6 +72,7 @@ impl Act {
         Self::StopListening,
         Self::SaveResult,
         Self::SearchCount,
+        Self::SearchSource,
     ];
 
     pub fn from_ctx(ctx: *mut c_void) -> Option<Self> {
@@ -178,6 +180,7 @@ pub struct Ui {
     _actions_row: Fixed<Element>,
     _search_row: Fixed<Element>,
     _count_items: Fixed<*const c_char>,
+    _source_items: Fixed<*const c_char>,
     _clean_box: Fixed<Element>,
     _options_box: Fixed<Element>,
     _format_items: Fixed<*const c_char>,
@@ -198,6 +201,7 @@ pub struct Ui {
     format: LenField,
     option_toggles: [BoolField; 3],
     search_count: LenField,
+    search_source: LenField,
     history_len: LenField,
     results_len: LenField,
     files_len: LenField,
@@ -270,11 +274,12 @@ unsafe fn bool_field(e: *mut Element) -> BoolField {
 /// indices in the top-level element array.
 mod idx {
     pub const STATUS: usize = 3;
+    pub const SOURCE: usize = 5;
     #[cfg(test)]
-    pub const QUERY: usize = 5;
-    pub const RESULTS: usize = 8;
-    pub const HISTORY: usize = 20;
-    pub const FILES: usize = 21;
+    pub const QUERY: usize = 6;
+    pub const RESULTS: usize = 9;
+    pub const HISTORY: usize = 21;
+    pub const FILES: usize = 22;
 }
 
 impl Ui {
@@ -365,6 +370,20 @@ impl Ui {
         ]);
         l.push(format_title);
         l.push(count_title);
+        let source_items = Fixed::new(
+            search::Source::ALL
+                .iter()
+                .map(|s| {
+                    let c = cstring(s.label());
+                    let p = c.as_ptr();
+                    l.push(c);
+                    p
+                })
+                .collect(),
+        );
+        let source_title = cstring("Search on");
+        let source_title_ptr = source_title.as_ptr();
+        l.push(source_title);
         let empty_slots = |n| {
             Fixed::new(
                 (0..n)
@@ -407,7 +426,15 @@ impl Ui {
             Element::Text {
                 text: cstring("Ready.").into_raw(),
             }, // STATUS
-            text(&mut labels, "Search YouTube"),
+            text(&mut labels, "Search YouTube / SoundCloud"),
+            Element::Select {
+                title: source_title_ptr,
+                items: source_items.ptr,
+                len: source_items.len,
+                selected: 0,
+                on_select: action,
+                ctx: Act::SearchSource.ctx(),
+            }, // SOURCE
             input(&mut labels, "search query, e.g. artist - song", &query), // QUERY
             Element::Box {
                 children: search_row.ptr,
@@ -489,6 +516,7 @@ impl Ui {
         let option_toggles = std::array::from_fn(|i| unsafe { bool_field(options_box.at(i + 1)) });
         let search_count = unsafe { len_field(options_box.at(4)) };
         let results_len = unsafe { len_field(elements.at(idx::RESULTS)) };
+        let search_source = unsafe { len_field(elements.at(idx::SOURCE)) };
         let history_len = unsafe { len_field(elements.at(idx::HISTORY)) };
         let files_len = unsafe { len_field(elements.at(idx::FILES)) };
 
@@ -503,6 +531,7 @@ impl Ui {
             _actions_row: actions_row,
             _search_row: search_row,
             _count_items: count_items,
+            _source_items: source_items,
             _clean_box: clean_box,
             _options_box: options_box,
             _format_items: format_items,
@@ -521,6 +550,7 @@ impl Ui {
             format,
             option_toggles,
             search_count,
+            search_source,
             history_len,
             results_len,
             files_len,
@@ -581,6 +611,7 @@ impl Ui {
             unsafe { AtomicBool::from_ptr(field.0) }.store(on, Ordering::Release);
         }
         Self::set_len(self.format, s.format.index());
+        Self::set_len(self.search_source, s.search_source.index());
         Self::set_len(
             self.search_count,
             search::COUNTS
@@ -714,18 +745,27 @@ mod tests {
     }
 
     fn selected_format(es: &[Element]) -> (usize, Vec<String>) {
+        select(es, "Format")
+    }
+
+    /// the select titled `title`: (selected, items).
+    fn select(es: &[Element], title: &str) -> (usize, Vec<String>) {
         flat(es)
             .into_iter()
             .find_map(|e| match *e {
-                Element::Select { selected, .. } => Some((
-                    selected,
-                    e.strings()
-                        .map(|c| c.to_string_lossy().into_owned())
-                        .collect(),
-                )),
+                Element::Select { selected, .. }
+                    if e.title().unwrap().to_string_lossy() == title =>
+                {
+                    Some((
+                        selected,
+                        e.strings()
+                            .map(|c| c.to_string_lossy().into_owned())
+                            .collect(),
+                    ))
+                }
                 _ => None,
             })
-            .expect("format select")
+            .unwrap_or_else(|| panic!("no select {title}"))
     }
 
     #[test]
@@ -741,8 +781,14 @@ mod tests {
         let (sel, items) = selected_format(es);
         assert_eq!(items.len(), AudioFormat::ALL.len());
         assert_eq!(items[sel], AudioFormat::M4a.label());
+        assert_eq!(
+            select(es, "Search on"),
+            (0, vec!["YouTube".into(), "SoundCloud".into()])
+        );
+        assert_eq!(select(es, "Search results").0, 1);
 
         s.clean.playlist = false;
+        s.search_source = search::Source::SoundCloud;
         s.embed_thumbnail = true;
         s.format = AudioFormat::Mp3;
         ui.show_settings(&s);
@@ -751,6 +797,7 @@ mod tests {
         assert!(toggle_on(es, "Embed cover"));
         let (sel, items) = selected_format(es);
         assert_eq!(items[sel], AudioFormat::Mp3.label());
+        assert_eq!(select(es, "Search on").0, 1);
         assert!(texts(es).contains(&"working".to_owned()));
 
         // history: newest first, capped, mirrored into `Info`.

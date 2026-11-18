@@ -1,6 +1,7 @@
 # rs_mod_ytdlp
 
-A dream_player mod: searches YouTube, lets you listen before saving, and downloads audio from YouTube (and other sites
+A dream_player mod: searches YouTube and SoundCloud, lets you listen before
+saving, and downloads audio from YouTube, SoundCloud (and other sites
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports) into the music folder
 and adds it to the library.
 
@@ -31,10 +32,14 @@ and adds it to the library.
   metadata, embed cover, add to the library;
   yt-dlp / ffmpeg paths, subfolder in the music folder (default `YouTube`),
   extra yt-dlp arguments (e.g. `--cookies cookies.txt`);
-- **Search YouTube**: a query field, **Search**, **Stop listening**,
-  **Save to library**, and the results list — `[duration] title — channel`
-  (`src/search.rs`, `src/browse.rs`; the count — 5 / 10 / 20 / 30 — is the
-  "Search results" option):
+- **Search YouTube / SoundCloud**: "Search on" (YouTube or SoundCloud —
+  yt-dlp's `ytsearchN:` / `scsearchN:`), a query field, **Search**,
+  **Stop listening**, **Save to library**, and the results list —
+  `[duration] title — channel / uploader` (`src/search.rs`,
+  `src/browse.rs`; the count — 5 / 10 / 20 / 30 — is the "Search results"
+  option). SoundCloud gives AAC (m4a) over HLS: the default format needs no
+  ffmpeg there either; Go+ tracks may come as 30 s snippets without an
+  account (`--cookies` in the extra arguments):
   - picking a result downloads its audio (only audio, in the chosen format)
     into `<cache>/rs_mod_ytdlp/preview` and plays it through the player;
     picking it again pauses / resumes; picking another one cancels the
@@ -66,5 +71,5 @@ go to `<cache>/rs_mod_ytdlp`, never to the music folder.
 
 ```
 cargo test                 # unit + e2e in a real core (offline, local http)
-cargo test -- --ignored    # real YouTube download and search (network)
+cargo test -- --ignored    # real YouTube download, YouTube / SoundCloud search (network)
 ```

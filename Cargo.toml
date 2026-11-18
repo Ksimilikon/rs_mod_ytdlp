@@ -1,6 +1,6 @@
 [package]
 name = "rs_mod_ytdlp"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "dream_player mod: downloads audio from YouTube with yt-dlp into the library"
 

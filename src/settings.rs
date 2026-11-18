@@ -2,7 +2,11 @@
 //! `<config>/mods/rs_mod_ytdlp.conf` (no serde: the format is trivial and
 //! the mod stays small).
 
-use crate::{clean::CleanFlags, search, ytdlp::AudioFormat};
+use crate::{
+    clean::CleanFlags,
+    search::{self, Source},
+    ytdlp::AudioFormat,
+};
 use std::{fs, io, path::Path};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +27,8 @@ pub struct Settings {
     pub extra_args: String,
     /// how many videos a search lists (one of [`search::COUNTS`]).
     pub search_count: usize,
+    /// where to search.
+    pub search_source: Source,
 }
 
 impl Default for Settings {
@@ -38,6 +44,7 @@ impl Default for Settings {
             subfolder: "YouTube".into(),
             extra_args: String::new(),
             search_count: 10,
+            search_source: Source::YouTube,
         }
     }
 }
@@ -86,6 +93,11 @@ impl Settings {
                 "ffmpeg_path" => s.ffmpeg_path = v.into(),
                 "subfolder" => s.subfolder = v.into(),
                 "extra_args" => s.extra_args = v.into(),
+                "search_source" => {
+                    if let Some(src) = Source::from_key(v) {
+                        s.search_source = src;
+                    }
+                }
                 "search_results" => {
                     if let Some(n) = v.parse().ok().filter(|n| search::COUNTS.contains(n)) {
                         s.search_count = n;
@@ -104,7 +116,7 @@ impl Settings {
             "# rs_mod_ytdlp settings\n\
              strip_playlist={}\nstrip_tracking={}\nstrip_time={}\nstrip_other={}\ncanonical={}\n\
              format={}\nembed_metadata={}\nembed_thumbnail={}\nadd_to_library={}\n\
-             ytdlp_path={}\nffmpeg_path={}\nsubfolder={}\nextra_args={}\nsearch_results={}\n",
+             ytdlp_path={}\nffmpeg_path={}\nsubfolder={}\nextra_args={}\nsearch_results={}\nsearch_source={}\n",
             b(self.clean.playlist),
             b(self.clean.tracking),
             b(self.clean.time),
@@ -119,6 +131,7 @@ impl Settings {
             line(&self.subfolder),
             line(&self.extra_args),
             self.search_count,
+            self.search_source.key(),
         )
     }
 
@@ -163,6 +176,7 @@ mod tests {
             subfolder: "".into(),
             extra_args: "--cookies c.txt".into(),
             search_count: 30,
+            search_source: Source::SoundCloud,
         };
         assert_eq!(Settings::parse(&s.serialize()), s);
     }
