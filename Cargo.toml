@@ -1,0 +1,28 @@
+[package]
+name = "rs_mod_ytdlp"
+version = "0.2.0"
+edition = "2024"
+description = "dream_player mod: downloads audio from YouTube with yt-dlp into the library"
+
+# `cdylib` — a dynamic mod for desktop (`<data>/mods`); `rlib` — linked
+# statically into a mobile frontend, which registers `rs_mod_ytdlp::MOD`
+# with `mods_add_static`.
+# a standalone crate, outside the player workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# only the ABI types and `export_mod!`; a mod never links the core itself.
+mod_sys = { path = "../rs_dream_player/mod_sys" }
+url = "2.5"
+
+# killing yt-dlp together with its children (ffmpeg): process group + kill.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# the end-to-end test runs the mod inside a real core.
+api = { path = "../rs_dream_player/api", features = ["modding"] }
+tempfile = "3"
